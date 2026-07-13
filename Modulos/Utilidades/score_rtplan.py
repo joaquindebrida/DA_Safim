@@ -57,6 +57,17 @@ from Utilidades.CONSTANTES import (
     SCORES
 )
 
+def _is_notebook() -> bool:
+    """True solo si hay un kernel de IPython/Jupyter corriendo (Colab, notebook).
+    En un servidor (ej. Streamlit en Render) devuelve False, evitando llamadas
+    a display() que ahí no muestran nada y solo ensucian los logs."""
+    try:
+        from IPython import get_ipython
+        return get_ipython() is not None
+    except Exception:
+        return False
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PLAN GROUP CLASSIFICATION
 # ─────────────────────────────────────────────────────────────────────────────
@@ -323,14 +334,20 @@ def score_rtplan(
     
     pipeline['resultados'] = df_resultados_final
 
-    _print_summary_html(df_resultados_final, os.path.basename(archivo), theme = theme)
+    # Genera el HTML del resumen y lo guarda en el pipeline (además de
+    # mostrarlo con display() si estamos en un notebook). Esto es lo que
+    # permite que un consumidor externo -como una app de Streamlit- pueda
+    # renderizarlo, ya que fuera de un notebook display() no muestra nada.
+    summary_html = _print_summary_html(df_resultados_final, os.path.basename(archivo), theme = theme)
+    pipeline['summary_html'] = summary_html
+
     if plot_features:
-        plot_case_explanation_html(
+        plot_html = plot_case_explanation_html(
             df_shap_all=df_shap_caso,
             top_n=10,
             theme=theme,
         )
-       
+        pipeline['plot_html'] = plot_html
 
     return pipeline
 
@@ -557,7 +574,8 @@ def _print_summary_html(
     </div>
     """
 
-    display(HTML(html))
+    if _is_notebook():
+        display(HTML(html))
 
     if save_path:
         with open(save_path, "w", encoding="utf-8") as f:
@@ -605,7 +623,8 @@ def plot_case_explanation_html(
 
     study_idxs = df_shap_all["Study_idx"].unique()
     if len(study_idxs) == 0:
-        display(HTML("<p style='color:#c62828'>[!] df_shap_all está vacío.</p>"))
+        if _is_notebook():
+            display(HTML("<p style='color:#c62828'>[!] df_shap_all está vacío.</p>"))
         return ""
 
     legend_html = f"""
@@ -749,7 +768,8 @@ def plot_case_explanation_html(
 
     full_html = "".join(sections)
 
-    display(HTML(full_html))
+    if _is_notebook():
+        display(HTML(full_html))
 
     if save_path:
         with open(save_path, "w", encoding="utf-8") as f:
