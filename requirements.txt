@@ -10,3 +10,5 @@ pydicom
 shap
 plotly
 ipython
+shapely
+
