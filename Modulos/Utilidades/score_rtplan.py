@@ -330,7 +330,7 @@ def score_rtplan(
 
     df_resultados_final = (
         df_caso[IDS]
-        .join(df_resultados[SCORES], how = "left")
+        .join(df_resultados[['Composite_score', 'Risk_percentile']], how = "left")
         .join(df_resultados[label_cols], how = "left")
         .join(summary2[["complexity_index", "complexity_pct"]], how = "left")
     )
