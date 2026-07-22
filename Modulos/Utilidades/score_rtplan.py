@@ -320,9 +320,18 @@ def score_rtplan(
 
     summary2 = summary.set_index("Study_idx")
 
+    # Columnas de etiqueta binaria por modelo (Score_IF_label, Score_KNN_label,
+    # etc.), generadas por predict_ensemble() comparando cada score contra su
+    # propio p80 de entrenamiento. Se agregan explícitamente porque no siempre
+    # están incluidas en la constante SCORES, y son necesarias para colorear
+    # las barras de score de forma coherente con la etiqueta de anomalía real
+    # de cada modelo (en vez de usar umbrales arbitrarios comunes).
+    label_cols = [c for c in df_resultados.columns if c.endswith("_label")]
+
     df_resultados_final = (
         df_caso[IDS]
         .join(df_resultados[SCORES], how = "left")
+        .join(df_resultados[label_cols], how = "left")
         .join(summary2[["complexity_index", "complexity_pct"]], how = "left")
     )
                       
@@ -448,9 +457,13 @@ def _print_summary_html(
             anomalia, riesgo = "SI", interpretacion
         return interpretacion, anomalia, riesgo
 
-    def score_bar(valor: float) -> str:
+    def score_bar(valor: float, label: int) -> str:
         pct = max(0, min(100, valor * 100))
-        color = "#ef5350" if valor >= 0.66 else "#f9a825" if valor >= 0.33 else "#4caf50"
+        # Verde si el modelo NO marcó anomalía (label 0), rojo si SÍ (label 1),
+        # en vez de umbrales arbitrarios sobre el valor escalado. Así el color
+        # de la barra coincide siempre con la etiqueta real de ese modelo
+        # (score >= p80 de su distribución de entrenamiento).
+        color = "#ef5350" if label else "#4caf50"
         track_bg = "#2a2e38" if theme == "dark" else "#eee"
         return f"""
         <div class="score-row">
@@ -470,6 +483,18 @@ def _print_summary_html(
         complexity = row["complexity_index"]
         tipo = row["tipo_anomalia"]
 
+        # Etiquetas binarias por modelo (0/1), calculadas por predict_ensemble
+        # comparando cada score contra el p80 de su propia distribución de
+        # entrenamiento. Si por algún motivo no llegaron en el DataFrame, se
+        # asume 0 (no marca anomalía) para no romper el reporte.
+        label_if  = int(row["Score_IF_label"])  if "Score_IF_label"  in row and pd.notna(row["Score_IF_label"])  else 0
+        label_knn = int(row["Score_KNN_label"]) if "Score_KNN_label" in row and pd.notna(row["Score_KNN_label"]) else 0
+        label_pca = int(row["Score_PCA_label"]) if "Score_PCA_label" in row and pd.notna(row["Score_PCA_label"]) else 0
+        label_lof = int(row["Score_LOF_label"]) if "Score_LOF_label" in row and pd.notna(row["Score_LOF_label"]) else 0
+        # Composite_label es la suma de labels individuales (0..N modelos);
+        # para la barra compuesta se pinta rojo si al menos un modelo marcó.
+        label_composite = int(label > 0)
+
         interpretacion, anomalia, riesgo = interpretar(label, tipo)
         c = RIESGO_COLORS.get(riesgo, RIESGO_COLORS["INTERMEDIO"])
         tipo_color = TIPO_COLORS.get(tipo, t["cx_neutral"])
@@ -484,11 +509,11 @@ def _print_summary_html(
           <div class="section">
             <div class="section-title">Scores <span class="hint">[0–1] 0: normal · 1: anómalo</span></div>
             <div class="score-grid">
-              <div class="score-label">Score_IF</div><div class="score-val">{score_if:.4f}</div>{score_bar(score_if)}
-              <div class="score-label">Score_KNN</div><div class="score-val">{score_knn:.4f}</div>{score_bar(score_knn)}
-              <div class="score-label">Score_PCA</div><div class="score-val">{score_pca:.4f}</div>{score_bar(score_pca)}
-              <div class="score-label">Score_LOF</div><div class="score-val">{score_lof:.4f}</div>{score_bar(score_lof)}
-              <div class="score-label"><b>Composite_score</b></div><div class="score-val"><b>{score:.4f}</b></div>{score_bar(score)}
+              <div class="score-label">Score_IF</div><div class="score-val">{score_if:.4f}</div>{score_bar(score_if, label_if)}
+              <div class="score-label">Score_KNN</div><div class="score-val">{score_knn:.4f}</div>{score_bar(score_knn, label_knn)}
+              <div class="score-label">Score_PCA</div><div class="score-val">{score_pca:.4f}</div>{score_bar(score_pca, label_pca)}
+              <div class="score-label">Score_LOF</div><div class="score-val">{score_lof:.4f}</div>{score_bar(score_lof, label_lof)}
+              <div class="score-label"><b>Composite_score</b></div><div class="score-val"><b>{score:.4f}</b></div>{score_bar(score, label_composite)}
             </div>
           </div>
 
