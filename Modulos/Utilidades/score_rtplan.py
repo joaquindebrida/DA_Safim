@@ -43,6 +43,7 @@ import shap
 from IPython.display import HTML, display
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from sklearn.decomposition import PCA
 
 # Ruta base del proyecto — sube dos niveles desde Utilidades/ hasta Modulos/
 _MODULOS_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
