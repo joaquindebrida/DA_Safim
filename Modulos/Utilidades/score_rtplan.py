@@ -327,11 +327,12 @@ def score_rtplan(
     # las barras de score de forma coherente con la etiqueta de anomalía real
     # de cada modelo (en vez de usar umbrales arbitrarios comunes).
     label_cols = [c for c in df_resultados.columns if c.endswith("_label")]
+    score_cols = ['Score_IF', 'Score_KNN', 'Score_PCA', 'Score_LOF']
 
     df_resultados_final = (
         df_caso[IDS]
         .join(df_resultados[['Composite_score', 'Risk_percentile']], how = "left")
-        .join(df_resultados[label_cols], how = "left")
+        .join(df_resultados[score_cols + label_cols], how = "left")
         .join(summary2[["complexity_index", "complexity_pct"]], how = "left")
     )
                       
