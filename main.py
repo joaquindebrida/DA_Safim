@@ -111,13 +111,18 @@ def main():
                 )
             else:
                 summary_html = resultado.get("summary_html")
+                embedding_html = resultado.get("embedding_html")
                 df_resumen = resultado.get("resultados")
 
                 if summary_html:
                     st.components.v1.html(summary_html, height=900, scrolling=True)
                 else:
                     st.warning("No se generó el resumen HTML del caso.")
-
+ 
+                if embedding_html:
+                    st.subheader("Ubicación del caso vs. entrenamiento (2D)")
+                    st.components.v1.html(embedding_html, height=520, scrolling=False)
+                    
                 if df_resumen is not None:
                     with st.expander("Ver tabla de resultados"):
                         st.dataframe(df_resumen, use_container_width=True)
