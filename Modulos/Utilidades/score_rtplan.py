@@ -351,6 +351,13 @@ def score_rtplan(
     summary_html = _print_summary_html(df_resultados_final, os.path.basename(archivo), theme = theme)
     pipeline['summary_html'] = summary_html
 
+    # Proyección 2D (PCA) del espacio de features (67 variables escaladas):
+    # dónde cae el caso evaluado respecto a la nube de ~300 casos de train.
+    embedding_html = plot_2d_embedding_html(
+        pipeline, df_resultados_final, X_caso_scaled, theme=theme
+    )
+    pipeline['embedding_html'] = embedding_html
+
     if plot_features:
         plot_html = plot_case_explanation_html(
             df_shap_all=df_shap_caso,
@@ -361,6 +368,141 @@ def score_rtplan(
 
     return pipeline
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2D EMBEDDING: TRAIN vs CASO EVALUADO (espacio de scores, 4 modelos)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def plot_2d_embedding_html(
+    pipeline: dict,
+    df_resultados_final: pd.DataFrame,
+    X_caso_scaled: np.ndarray,
+    theme: str = "dark",
+    save_path: str | None = None,
+) -> str:
+    """
+    Proyección 2D (PCA) del espacio de FEATURES (las ~67 variables clínicas,
+    escaladas con el mismo StandardScaler del entrenamiento), mostrando los
+    ~300 casos de entrenamiento y el caso evaluado (uno o más haces) sobre
+    los mismos ejes.
+
+    A diferencia de una versión anterior que proyectaba el espacio de scores
+    (4 dimensiones, una por modelo), acá el PCA se calcula sobre el espacio
+    de features original. Esto refleja similitud/disimilitud "clínica" entre
+    planes (geometría real de las 67 variables), no solo cómo lo puntuó cada
+    modelo. El color de cada punto sigue indicando si el ensemble lo marcó
+    como anómalo o no.
+
+    Color:
+        Verde -> ningún modelo marcó anomalía (label 0 en los 4 modelos)
+        Rojo  -> al menos un modelo marcó anomalía (mismo criterio que las
+                 barras de score del resumen, p80 de entrenamiento por modelo)
+    El caso evaluado se dibuja con marcador tipo estrella, más grande, y
+    etiquetado con el nombre del haz.
+
+    Parameters
+    ----------
+    pipeline : dict
+        Salida de fit_ensemble(). Debe contener 'score_cols', 'X_train_scaled',
+        'df_labels_train'.
+    df_resultados_final : pd.DataFrame
+        DataFrame armado en score_rtplan() con, al menos, las columnas de
+        label (Score_IF_label, ..., Score_LOF_label) del caso evaluado.
+    X_caso_scaled : np.ndarray
+        Features del caso evaluado (una fila por haz) ya escaladas con
+        pipeline['scaler'], mismas columnas/orden que pipeline['features'].
+    theme : str
+        "dark" o "light".
+    save_path : str | None
+        Si se especifica, guarda el HTML en disco.
+    """
+    t = _get_theme_html(theme)
+
+    GREEN, RED = "#4caf50", "#ef5350"
+
+    score_cols       = pipeline["score_cols"]
+    X_train_scaled   = pipeline["X_train_scaled"]
+    df_labels_train  = pipeline["df_labels_train"]
+    label_cols       = [f"{c}_label" for c in score_cols]
+
+    faltantes = [c for c in label_cols if c not in df_resultados_final.columns]
+    if faltantes:
+        raise ValueError(f"df_resultados_final no tiene las columnas necesarias: {faltantes}")
+
+    # ── PCA 2D sobre el espacio de features (train) ──────────────────
+    pca       = PCA(n_components=2, random_state=42)
+    emb_train = pca.fit_transform(X_train_scaled)
+    emb_case  = pca.transform(X_caso_scaled)
+    var_exp   = pca.explained_variance_ratio_ * 100
+
+    # ── Colores según label (0/1) por caso ───────────────────────────
+    n_flag_train  = df_labels_train["Anomalia"]
+    color_train   = np.where(n_flag_train > 0, RED, GREEN)
+
+    n_flag_case = df_resultados_final[label_cols].sum(axis=1)
+    color_case  = np.where(n_flag_case > 0, RED, GREEN)
+
+    beam_labels = df_resultados_final["ID2"].astype(str) if "ID2" in df_resultados_final.columns \
+        else [f"Beam_{i}" for i in range(len(df_resultados_final))]
+
+    fig = go.Figure()
+
+    # Nube de entrenamiento
+    fig.add_trace(go.Scatter(
+        x=emb_train[:, 0], y=emb_train[:, 1],
+        mode="markers",
+        marker=dict(size=6, color=color_train, opacity=0.55, line=dict(width=0)),
+        hovertext=[f"Train · modelos que marcan anomalía: {int(n)}/4" for n in n_flag_train],
+        hovertemplate="%{hovertext}<extra></extra>",
+        showlegend=False,
+    ))
+
+    # Entradas "fantasma" solo para la leyenda (no queremos duplicar hover)
+    fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers",
+                              marker=dict(size=9, color=GREEN),
+                              name="Train · sin anomalía (0/4 modelos)"))
+    fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers",
+                              marker=dict(size=9, color=RED),
+                              name="Train · marcado por ≥1 modelo"))
+
+    # Caso evaluado
+    fig.add_trace(go.Scatter(
+        x=emb_case[:, 0], y=emb_case[:, 1],
+        mode="markers+text",
+        marker=dict(size=18, symbol="star", color=color_case,
+                    line=dict(width=2, color=t["text"])),
+        text=beam_labels,
+        textposition="top center",
+        textfont=dict(color=t["text"], size=10),
+        hovertext=[f"Beam: {b} · modelos que marcan anomalía: {int(n)}/4"
+                   for b, n in zip(beam_labels, n_flag_case)],
+        hovertemplate="%{hovertext}<extra></extra>",
+        name="Caso evaluado",
+    ))
+
+    fig.update_layout(
+        template=t["template"],
+        paper_bgcolor=t["bg"], plot_bgcolor=t["panel_bg"],
+        font=dict(color=t["text"], family="Segoe UI, Roboto, Arial, sans-serif"),
+        title=dict(text="Ubicación del caso vs. entrenamiento (espacio de features, PCA)",
+                   font=dict(size=14)),
+        xaxis_title=f"PC1 ({var_exp[0]:.1f}% var.)",
+        yaxis_title=f"PC2 ({var_exp[1]:.1f}% var.)",
+        height=480,
+        margin=dict(l=40, r=20, t=50, b=40),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+
+    embedding_html = fig.to_html(full_html=False, include_plotlyjs="cdn")
+
+    if _is_notebook():
+        display(HTML(embedding_html))
+
+    if save_path:
+        with open(save_path, "w", encoding="utf-8") as f:
+            f.write(embedding_html)
+
+    return embedding_html
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PRETTY PRINT
