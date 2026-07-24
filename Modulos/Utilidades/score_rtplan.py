@@ -640,7 +640,7 @@ def _print_summary_html(
         label_composite = int(label > 0)
 
         interpretacion, anomalia, riesgo = interpretar(label, tipo)
-        c = RIESGO_COLORS.get(riesgo, RIESGO_COLORS["INTERMEDIO"])
+        c = RIESGO_COLORS.get(interpretacion, RIESGO_COLORS["INTERMEDIO"]) #antiguamente riesgo
         tipo_color = TIPO_COLORS.get(tipo, t["cx_neutral"])
 
         cards_html.append(f"""
