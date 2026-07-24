@@ -647,7 +647,7 @@ def _print_summary_html(
         <div class="card" style="border-left:6px solid {c['border']};background:{c['bg']};">
           <div class="card-header">
             <span class="beam-title">Beam: {beam}</span>
-            <span class="badge" style="background:{c['badge']};">{riesgo}</span>
+            <span class="badge" style="background:{c['badge']};">{interpretacion}</span>
           </div>
 
           <div class="section">
