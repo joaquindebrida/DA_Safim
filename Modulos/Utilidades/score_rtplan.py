@@ -424,10 +424,12 @@ def plot_2d_embedding_html(
     score_cols       = pipeline["score_cols"]
     X_train_scaled   = pipeline["X_train_scaled"]
     df_labels_train  = pipeline["df_labels_train"]
-    label_cols       = [f"{c}_label" for c in score_cols
+    label_cols       = [f"{c}_label" for c in score_cols]
     scaler           = pipeline['scaler']
+    features         = pipeline["features"]
     caso             = pipeline['caso']
     caso_scaled      = scaler.transform(caso[features])
+    df_resultados_final    = pipeline['resultados']
 
     faltantes = [c for c in label_cols if c not in df_resultados_final.columns]
     if faltantes:
@@ -436,7 +438,7 @@ def plot_2d_embedding_html(
     # ── PCA 2D sobre el espacio de features (train) ──────────────────
     pca       = PCA(n_components=2, random_state=42)
     Z_train   = pca.fit_transform(X_train_scaled)
-    Z_case    = pca.transform(caso_scaled)
+    Z_caso    = pca.transform(caso_scaled)
     var_exp   = pca.explained_variance_ratio_ * 100
 
     # ── Colores según label (0/1) por caso ───────────────────────────
@@ -459,17 +461,17 @@ def plot_2d_embedding_html(
 
         mask = labels == nivel
     
-        plt.scatter(
+        fig.add_trace(go.Scatter(
             Z_train[mask, 0],
             Z_train[mask, 1],
             color=colors[nivel],
             s=35,
             alpha=0.65,
             label=f"{nivel}/4 modelos"
-        )
+        ))
     
     # Caso nuevo
-    plt.scatter(
+    fig.add_trace(go.Scatter(
         Z_caso[0, 0],
         Z_caso[0, 1],
         color="black",
@@ -479,7 +481,7 @@ def plot_2d_embedding_html(
         linewidths=1,
         label="Caso nuevo",
         zorder=10
-    )
+    ))
 
     fig.update_layout(
         template=t["template"],
