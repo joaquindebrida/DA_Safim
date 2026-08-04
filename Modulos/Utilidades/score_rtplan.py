@@ -355,7 +355,7 @@ def score_rtplan(
     # Proyección 2D (PCA) del espacio de features (67 variables escaladas):
     # dónde cae el caso evaluado respecto a la nube de ~300 casos de train.
     embedding_html = plot_2d_embedding_html(
-        pipeline, df_resultados_final, X_caso_scaled, theme=theme
+        pipeline, theme=theme
     )
     pipeline['embedding_html'] = embedding_html
 
@@ -376,8 +376,8 @@ def score_rtplan(
 
 def plot_2d_embedding_html(
     pipeline: dict,
-    df_resultados_final: pd.DataFrame,
-    X_caso_scaled: np.ndarray,
+    #df_resultados_final: pd.DataFrame,
+    #X_caso_scaled: np.ndarray,
     theme: str = "dark",
     save_path: str | None = None,
 ) -> str:
@@ -424,7 +424,10 @@ def plot_2d_embedding_html(
     score_cols       = pipeline["score_cols"]
     X_train_scaled   = pipeline["X_train_scaled"]
     df_labels_train  = pipeline["df_labels_train"]
-    label_cols       = [f"{c}_label" for c in score_cols]
+    label_cols       = [f"{c}_label" for c in score_cols
+    scaler           = pipeline['scaler']
+    caso             = pipeline['caso']
+    caso_scaled      = scaler.transform(caso[features])
 
     faltantes = [c for c in label_cols if c not in df_resultados_final.columns]
     if faltantes:
@@ -432,16 +435,19 @@ def plot_2d_embedding_html(
 
     # ── PCA 2D sobre el espacio de features (train) ──────────────────
     pca       = PCA(n_components=2, random_state=42)
-    emb_train = pca.fit_transform(X_train_scaled)
-    emb_case  = pca.transform(X_caso_scaled)
+    Z_train   = pca.fit_transform(X_train_scaled)
+    Z_case    = pca.transform(caso_scaled)
     var_exp   = pca.explained_variance_ratio_ * 100
 
     # ── Colores según label (0/1) por caso ───────────────────────────
-    n_flag_train  = df_labels_train["Anomalia"]
-    color_train   = np.where(n_flag_train > 0, RED, GREEN)
-
-    n_flag_case = df_resultados_final[label_cols].sum(axis=1)
-    color_case  = np.where(n_flag_case > 0, RED, GREEN)
+    labels        = pipeline['df_labels_train']['Anomalia'].values
+    colors = {
+                0: "green",
+                1: "yellowgreen",
+                2: "gold",
+                3: "orange",
+                4: "red"
+            }
 
     beam_labels = df_resultados_final["ID2"].astype(str) if "ID2" in df_resultados_final.columns \
         else [f"Beam_{i}" for i in range(len(df_resultados_final))]
@@ -449,37 +455,31 @@ def plot_2d_embedding_html(
     fig = go.Figure()
 
     # Nube de entrenamiento
-    fig.add_trace(go.Scatter(
-        x=emb_train[:, 0], y=emb_train[:, 1],
-        mode="markers",
-        marker=dict(size=6, color=color_train, opacity=0.55, line=dict(width=0)),
-        hovertext=[f"Train · modelos que marcan anomalía: {int(n)}/4" for n in n_flag_train],
-        hovertemplate="%{hovertext}<extra></extra>",
-        showlegend=False,
-    ))
+    for nivel in range(5):
 
-    # Entradas "fantasma" solo para la leyenda (no queremos duplicar hover)
-    fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers",
-                              marker=dict(size=9, color=GREEN),
-                              name="Train · sin anomalía (0/4 modelos)"))
-    fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers",
-                              marker=dict(size=9, color=RED),
-                              name="Train · marcado por ≥1 modelo"))
-
-    # Caso evaluado
-    fig.add_trace(go.Scatter(
-        x=emb_case[:, 0], y=emb_case[:, 1],
-        mode="markers+text",
-        marker=dict(size=18, symbol="star", color=color_case,
-                    line=dict(width=2, color=t["text"])),
-        text=beam_labels,
-        textposition="top center",
-        textfont=dict(color=t["text"], size=10),
-        hovertext=[f"Beam: {b} · modelos que marcan anomalía: {int(n)}/4"
-                   for b, n in zip(beam_labels, n_flag_case)],
-        hovertemplate="%{hovertext}<extra></extra>",
-        name="Caso evaluado",
-    ))
+        mask = labels == nivel
+    
+        plt.scatter(
+            Z_train[mask, 0],
+            Z_train[mask, 1],
+            color=colors[nivel],
+            s=35,
+            alpha=0.65,
+            label=f"{nivel}/4 modelos"
+        )
+    
+    # Caso nuevo
+    plt.scatter(
+        Z_caso[0, 0],
+        Z_caso[0, 1],
+        color="black",
+        marker="*",
+        s=250,
+        edgecolors="white",
+        linewidths=1,
+        label="Caso nuevo",
+        zorder=10
+    )
 
     fig.update_layout(
         template=t["template"],
@@ -487,8 +487,8 @@ def plot_2d_embedding_html(
         font=dict(color=t["text"], family="Segoe UI, Roboto, Arial, sans-serif"),
         title=dict(text="Ubicación del caso vs. entrenamiento (espacio de features, PCA)",
                    font=dict(size=14)),
-        xaxis_title=f"PC1 ({var_exp[0]:.1f}% var.)",
-        yaxis_title=f"PC2 ({var_exp[1]:.1f}% var.)",
+        xaxis_title="PC1",
+        yaxis_title="PC2",
         height=480,
         margin=dict(l=40, r=20, t=50, b=40),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
