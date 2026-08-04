@@ -458,29 +458,36 @@ def plot_2d_embedding_html(
 
     # Nube de entrenamiento
     for nivel in range(5):
-
         mask = labels == nivel
+        if not mask.any():
+            continue  # evita traces vacíos (opcional pero prolijo)
     
         fig.add_trace(go.Scatter(
-            Z_train[mask, 0],
-            Z_train[mask, 1],
-            color=colors[nivel],
-            s=35,
-            alpha=0.65,
-            label=f"{nivel}/4 modelos"
+            x=Z_train[mask, 0],
+            y=Z_train[mask, 1],
+            mode="markers",
+            marker=dict(
+                color=colors[nivel],
+                size=8,          # equivalente aproximado a s=35 en matplotlib
+                opacity=0.65,
+            ),
+            name=f"{nivel}/4 modelos",
         ))
     
     # Caso nuevo
     fig.add_trace(go.Scatter(
-        Z_caso[0, 0],
-        Z_caso[0, 1],
-        color="black",
-        marker="*",
-        s=250,
-        edgecolors="white",
-        linewidths=1,
-        label="Caso nuevo",
-        zorder=10
+        x=[Z_caso[0, 0]],
+        y=[Z_caso[0, 1]],
+        mode="markers+text",
+        marker=dict(
+            color="black",
+            symbol="star",
+            size=22,            # equivalente aproximado a s=250
+            line=dict(color="white", width=1),
+        ),
+        text=[beam_labels[0]] if len(beam_labels) else None,
+        textposition="top center",
+        name="Caso nuevo",
     ))
 
     fig.update_layout(
